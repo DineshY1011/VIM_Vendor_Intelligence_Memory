@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VendorPulse</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #0a0a0f;
+  --surface:   #111118;
+  --border:    #1e1e2e;
+  --border2:   #2a2a3e;
+  --text:      #e8e8f0;
+  --muted:     #6b6b88;
+  --accent:    #5b6cff;
+  --accent2:   #8b5cf6;
+  --green:     #22c78b;
+  --yellow:    #f59e0b;
+  --red:       #ef4444;
+  --mono:      'DM Mono', monospace;
+  --sans:      'Syne', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── layout ── */
+.shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  grid-template-rows: 56px 1fr;
+  min-height: 100vh;
+}
+
+/* ── topbar ── */
+.topbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.logo {
+  font-family: var(--sans);
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: -0.5px;
+  color: var(--text);
+}
+.logo span { color: var(--accent); }
+.topbar-tag {
+  font-size: 10px;
+  color: var(--muted);
+  border: 1px solid var(--border2);
+  padding: 2px 8px;
+  border-radius: 20px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+}
+
+/* ── sidebar ── */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 20px 0;
+  overflow-y: auto;
+}
+.sidebar-section {
+  padding: 6px 16px 12px;
+}
+.sidebar-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 8px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+.nav-item:hover { color: var(--text); background: var(--border); }
+.nav-item.active {
+  color: var(--text);
+  background: rgba(91,108,255,0.12);
+  border-color: rgba(91,108,255,0.3);
+}
+.nav-icon { font-size: 14px; width: 18px; text-align: center; }
+
+/* vendor badge in sidebar */
+.vendor-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  font-size: 12px;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+  color: var(--muted);
+}
+.vendor-chip:hover { background: var(--border); color: var(--text); }
+.vendor-chip.active { background: rgba(34,199,139,0.1); border-color: rgba(34,199,139,0.25); color: var(--green); }
+.vendor-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.vendor-chip.active .vendor-dot { background: var(--green); }
+
+/* ── main ── */
+.main {
+  overflow-y: auto;
+  padding: 28px 32px;
+}
+
+/* ── panels ── */
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* ── page header ── */
+.page-header {
+  margin-bottom: 28px;
+}
+.page-title {
+  font-family: var(--sans);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.page-subtitle { color: var(--muted); font-size: 12px; }
+
+/* ── card ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 22px;
+  margin-bottom: 16px;
+}
+.card-title {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 14px;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── form ── */
+.form-row { margin-bottom: 14px; }
+label {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 5px;
+}
+input[type="text"], select, textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 9px 12px;
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+input[type="text"]:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+}
+textarea { resize: vertical; min-height: 80px; }
+select option { background: var(--surface); }
+
+/* ── mode toggle ── */
+.mode-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.mode-btn {
+  flex: 1;
+  padding: 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border2);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+.mode-btn:hover { border-color: var(--border2); color: var(--text); background: var(--border); }
+.mode-btn.active.baseline {
+  border-color: rgba(91,108,255,0.5);
+  background: rgba(91,108,255,0.12);
+  color: #8b9fff;
+}
+.mode-btn.active.normal {
+  border-color: rgba(34,199,139,0.5);
+  background: rgba(34,199,139,0.1);
+  color: var(--green);
+}
+
+/* ── file drop ── */
+.drop-zone {
+  border: 1px dashed var(--border2);
+  border-radius: 8px;
+  padding: 28px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+}
+.drop-zone:hover, .drop-zone.dragover {
+  border-color: var(--accent);
+  background: rgba(91,108,255,0.05);
+}
+.drop-zone input[type="file"] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer;
+  width: 100%; height: 100%;
+}
+.drop-icon { font-size: 28px; margin-bottom: 8px; }
+.drop-label { color: var(--muted); font-size: 12px; }
+.drop-label strong { color: var(--text); }
+.file-selected { color: var(--green); font-size: 12px; margin-top: 8px; }
+
+/* ── button ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  border-radius: 6px;
+  border: none;
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-weight: 500;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover { background: #4a5be8; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border2);
+}
+.btn-ghost:hover { color: var(--text); border-color: var(--text); }
+.btn-full { width: 100%; justify-content: center; }
+.spin { display: none; }
+.btn.loading .spin { display: inline-block; animation: rotate 0.8s linear infinite; }
+.btn.loading .btn-label { opacity: 0.6; }
+@keyframes rotate { to { transform: rotate(360deg); } }
+
+/* ── result output ── */
+.result-box {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  margin-top: 14px;
+  font-size: 12px;
+}
+.result-success { border-color: rgba(34,199,139,0.35); }
+.result-error   { border-color: rgba(239,68,68,0.35); color: var(--red); }
+
+/* ── events table ── */
+.events-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.events-table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border-bottom: 1px solid var(--border);
+}
+.events-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.events-table tr:last-child td { border-bottom: none; }
+.events-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+/* severity badges */
+.sev {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.sev-1 { background: rgba(107,107,136,0.2); color: var(--muted); }
+.sev-2 { background: rgba(245,158,11,0.15); color: var(--yellow); }
+.sev-3 { background: rgba(239,68,68,0.15);  color: var(--red); }
+
+.fact-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  background: rgba(91,108,255,0.12);
+  color: #8b9fff;
+  border: 1px solid rgba(91,108,255,0.2);
+}
+
+/* ── baseline fields ── */
+.baseline-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.baseline-field {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.baseline-field-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+.baseline-field-value { font-size: 13px; color: var(--text); }
+
+/* ── chat ── */
+.chat-messages {
+  min-height: 180px;
+  max-height: 380px;
+  overflow-y: auto;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.msg {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  max-width: 85%;
+}
+.msg-user {
+  background: rgba(91,108,255,0.15);
+  border: 1px solid rgba(91,108,255,0.25);
+  align-self: flex-end;
+}
+.msg-agent {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  align-self: flex-start;
+  white-space: pre-wrap;
+}
+.msg-empty { color: var(--muted); font-style: italic; }
+.chat-row { display: flex; gap: 8px; }
+.chat-row textarea { flex: 1; min-height: 44px; }
+
+/* ── empty state ── */
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted);
+}
+.empty-icon { font-size: 32px; margin-bottom: 10px; }
+
+/* ── toast ── */
+#toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 12px 18px;
+  font-size: 12px;
+  z-index: 999;
+  transform: translateY(80px);
+  opacity: 0;
+  transition: all 0.25s;
+  max-width: 320px;
+}
+#toast.show { transform: translateY(0); opacity: 1; }
+#toast.success { border-color: rgba(34,199,139,0.4); color: var(--green); }
+#toast.error   { border-color: rgba(239,68,68,0.4); color: var(--red); }
+
+/* ── mode hint ── */
+.mode-hint {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+.mode-hint strong { color: var(--text); }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- topbar -->
+  <header class="topbar">
+    <div class="logo">Vendor<span>Pulse</span></div>
+    <div class="topbar-tag">Memory Agent</div>
+    <div class="topbar-right">
+      <div class="status-dot" id="statusDot"></div>
+      <span style="font-size:11px;color:var(--muted)" id="statusText">connecting…</span>
+    </div>
+    <button onclick="window.location.href='/static/chat.html'" class="btn-redirect">
+    ← Go to Chat
+    </button>
+  </header>
+
+  <!-- sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Navigate</div>
+      <div class="nav-item active" data-panel="ingest" onclick="switchPanel(this)">
+        <span class="nav-icon">↑</span> Ingest Docs
+      </div>
+      <div class="nav-item" data-panel="baseline" onclick="switchPanel(this)">
+        <span class="nav-icon">◈</span> Baseline
+      </div>
+      <div class="nav-item" data-panel="events" onclick="switchPanel(this)">
+        <span class="nav-icon">≡</span> Event Log
+      </div>
+      <div class="nav-item" data-panel="chat" onclick="switchPanel(this)">
+        <span class="nav-icon">◉</span> Ask Agent
+      </div>
+    </div>
+
+    <div class="sidebar-section" style="margin-top:8px;">
+      <div class="sidebar-label">Recent Vendors</div>
+      <div id="vendorList">
+        <div style="font-size:11px;color:var(--muted);padding:4px 12px;">None yet</div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- main -->
+  <main class="main">
+
+    <!-- ── INGEST PANEL ── -->
+    <div class="panel active" id="panel-ingest">
+      <div class="page-header">
+        <div class="page-title">Ingest Document</div>
+        <div class="page-subtitle">Upload a vendor document to extract and store structured memory</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">⬡ Upload Mode</div>
+
+        <div class="mode-toggle">
+          <button class="mode-btn baseline active" id="modeBaseline" onclick="setMode('baseline')">
+            ◈ Baseline
+          </button>
+          <button class="mode-btn normal" id="modeNormal" onclick="setMode('normal')">
+            ≡ Normal Event
+          </button>
+        </div>
+
+        <div class="mode-hint" id="modeHint">
+          <strong>Baseline mode:</strong> Process the original contract. Writes the immutable
+          <code>{vendor_id}:baseline</code> memory — vendor name, agreed price, SLA terms,
+          contract dates, rep name. Call this once per vendor only.
+        </div>
+
+        <div class="form-row">
+          <label>Vendor ID</label>
+          <input type="text" id="vendorId" placeholder="e.g. twilio" autocomplete="off"
+                 oninput="this.value = this.value.toLowerCase().replace(/[^a-z0-9\-]/g,'')">
+        </div>
+
+        <div class="form-row">
+          <label>Document File (.txt, .pdf)</label>
+          <div class="drop-zone" id="dropZone">
+            <input type="file" id="fileInput" accept=".txt,.pdf" onchange="onFileSelected(this)">
+            <div class="drop-icon">⬆</div>
+            <div class="drop-label">Drop file here or <strong>click to browse</strong></div>
+            <div class="file-selected" id="fileLabel" style="display:none"></div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-full" id="uploadBtn" onclick="uploadDoc()">
+          <span class="spin">↻</span>
+          <span class="btn-label">Upload &amp; Process</span>
+        </button>
+
+        <div id="uploadResult" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- ── BASELINE PANEL ── -->
+    <div class="panel" id="panel-baseline">
+      <div class="page-header">
+        <div class="page-title">Baseline Memory</div>
+        <div class="page-subtitle">The immutable original contract terms — never mutated</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">⬡ Lookup Vendor Baseline</div>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="baselineVendorId" placeholder="vendor id e.g. twilio" style="flex:1">
+          <button class="btn btn-primary" onclick="loadBaseline()">Load</button>
+        </div>
+        <div id="baselineResult" style="margin-top:16px;"></div>
+      </div>
+    </div>
+
+    <!-- ── EVENTS PANEL ── -->
+    <div class="panel" id="panel-events">
+      <div class="page-header">
+        <div class="page-title">Event Log</div>
+        <div class="page-subtitle">Append-only history of all extracted vendor facts</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">⬡ Vendor Events</div>
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
+          <input type="text" id="eventsVendorId" placeholder="vendor id e.g. twilio" style="flex:1">
+          <button class="btn btn-primary" onclick="loadEvents()">Load</button>
+        </div>
+        <div id="eventsResult"></div>
+      </div>
+    </div>
+
+    <!-- ── CHAT PANEL ── -->
+    <div class="panel" id="panel-chat">
+      <div class="page-header">
+        <div class="page-title">Ask the Agent</div>
+        <div class="page-subtitle">Query vendor memory — get negotiation briefs, drift analysis, broken promises</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">⬡ Vendor</div>
+        <input type="text" id="chatVendorId" placeholder="vendor id e.g. twilio" style="margin-bottom:14px;">
+
+        <div class="card-title">⬡ Quick Actions</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+          <button class="btn btn-ghost" onclick="setQuery('Brief me before my renewal call. Give me pricing history, SLA violations, broken promises, and your recommended opening position.')">📋 Pre-renewal brief</button>
+          <button class="btn btn-ghost" onclick="setQuery('How has pricing drifted since our original contract? Show all price changes with dates.')">💸 Price drift</button>
+          <button class="btn btn-ghost" onclick="setQuery('What commitments or promises has the vendor made that have not been honored or are unresolved?')">⚠ Broken promises</button>
+          <button class="btn btn-ghost" onclick="setQuery('What SLA violations occurred and were any credits ever issued?')">🔴 SLA violations</button>
+        </div>
+
+        <div class="chat-messages" id="chatMessages">
+          <div class="msg msg-empty">Ask a question about your vendor history…</div>
+        </div>
+
+        <div class="chat-row">
+          <textarea id="chatQuery" placeholder="e.g. What has Twilio promised that they have not delivered?" rows="2"></textarea>
+          <button class="btn btn-primary" id="chatBtn" onclick="askAgent()" style="align-self:flex-end;">
+            <span class="spin">↻</span>
+            <span class="btn-label">Ask</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = window.location.origin;
+
+// ── state ─────────────────────────────────────────────────────────────────────
+let currentMode = 'baseline';
+let selectedFile = null;
+const knownVendors = new Set();
+
+// ── health check ──────────────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const r = await fetch(`${API}/health`);
+    if (r.ok) {
+      document.getElementById('statusDot').style.background = 'var(--green)';
+      document.getElementById('statusDot').style.boxShadow = '0 0 6px var(--green)';
+      document.getElementById('statusText').textContent = 'connected';
+    } else throw new Error();
+  } catch {
+    document.getElementById('statusDot').style.background = 'var(--red)';
+    document.getElementById('statusDot').style.boxShadow = '0 0 6px var(--red)';
+    document.getElementById('statusText').textContent = 'offline';
+  }
+}
+checkHealth();
+
+// ── navigation ────────────────────────────────────────────────────────────────
+function switchPanel(el) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('panel-' + el.dataset.panel).classList.add('active');
+}
+
+// ── mode toggle ───────────────────────────────────────────────────────────────
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('modeBaseline').classList.toggle('active', mode === 'baseline');
+  document.getElementById('modeNormal').classList.toggle('active', mode === 'normal');
+  const hint = document.getElementById('modeHint');
+  if (mode === 'baseline') {
+    hint.innerHTML = '<strong>Baseline mode:</strong> Process the original contract. Writes the immutable <code>{vendor_id}:baseline</code> memory — vendor name, agreed price, SLA terms, contract dates, rep name. <strong>Call once per vendor only.</strong>';
+  } else {
+    hint.innerHTML = '<strong>Normal mode:</strong> Process invoices, emails, transcripts, renewals. Extracts facts, runs drift classification vs baseline, and appends to the <code>{vendor_id}:events</code> log. Append-only — never overwrites.';
+  }
+}
+
+// ── file selection ────────────────────────────────────────────────────────────
+function onFileSelected(input) {
+  if (input.files && input.files[0]) {
+    selectedFile = input.files[0];
+    const lbl = document.getElementById('fileLabel');
+    lbl.textContent = '✓ ' + selectedFile.name;
+    lbl.style.display = 'block';
+  }
+}
+
+// drag-over styling
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('dragover');
+  const f = e.dataTransfer.files[0];
+  if (f) {
+    selectedFile = f;
+    const lbl = document.getElementById('fileLabel');
+    lbl.textContent = '✓ ' + f.name;
+    lbl.style.display = 'block';
+  }
+});
+
+// ── upload ────────────────────────────────────────────────────────────────────
+async function uploadDoc() {
+  const vendorId = document.getElementById('vendorId').value.trim();
+  if (!vendorId) return toast('Enter a vendor ID', 'error');
+  if (!selectedFile) return toast('Select a file first', 'error');
+
+  const btn = document.getElementById('uploadBtn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+
+  const fd = new FormData();
+  fd.append('vendor_id', vendorId);
+  fd.append('mode', currentMode);
+  fd.append('file', selectedFile);
+
+  try {
+    const r = await fetch(`${API}/upload`, { method: 'POST', body: fd });
+    const data = await r.json();
+
+    const box = document.getElementById('uploadResult');
+    box.style.display = 'block';
+
+    if (!r.ok) {
+      box.innerHTML = `<div class="result-box result-error">Error: ${data.detail || JSON.stringify(data)}</div>`;
+      toast('Upload failed', 'error');
+    } else {
+      if (currentMode === 'baseline') {
+        box.innerHTML = renderBaselineResult(data);
+        toast('Baseline stored ✓', 'success');
+      } else {
+        box.innerHTML = renderEventsResult(data);
+        const added = data.events_added?.length ?? 0;
+        toast(`${added} event${added !== 1 ? 's' : ''} stored ✓`, 'success');
+      }
+      addVendorChip(vendorId);
+    }
+  } catch (err) {
+    document.getElementById('uploadResult').innerHTML =
+      `<div class="result-box result-error">Network error: ${err.message}</div>`;
+    document.getElementById('uploadResult').style.display = 'block';
+    toast('Network error', 'error');
+  }
+
+  btn.classList.remove('loading');
+  btn.disabled = false;
+}
+
+function renderBaselineResult(data) {
+  const b = data.baseline || {};
+  return `
+  <div class="result-box result-success">
+    <div style="color:var(--green);margin-bottom:10px;font-weight:500;">✓ Baseline stored → <code>${data.vendor_id}:baseline</code></div>
+    <div class="baseline-grid">
+      ${Object.entries(b).map(([k,v]) => `
+        <div class="baseline-field">
+          <div class="baseline-field-label">${k.replace(/_/g,' ')}</div>
+          <div class="baseline-field-value">${v || '<span style="color:var(--muted)">—</span>'}</div>
+        </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function renderEventsResult(data) {
+  const added = data.events_added || [];
+  const skipped = data.events_skipped || [];
+  if (!added.length) return `<div class="result-box result-error">No events extracted or all were skipped (${skipped.length} skipped).</div>`;
+
+  const rows = added.map(({event, drift}) => {
+    const sev = event.severity;
+    const sevHtml = `<span class="sev sev-${sev}">${['','MINOR','NOTABLE','BREACH'][sev] || sev}</span>`;
+    const driftHtml = drift?.delta_summary
+      ? `<div style="color:var(--muted);font-size:11px;margin-top:3px;">↳ ${drift.delta_summary}</div>` : '';
+    return `
+    <tr>
+      <td>${event.date || '—'}</td>
+      <td><span class="fact-badge">${event.fact_type}</span></td>
+      <td>${event.value}</td>
+      <td>${event.summary}${driftHtml}</td>
+      <td>${sevHtml}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+  <div class="result-box result-success">
+    <div style="color:var(--green);margin-bottom:12px;font-weight:500;">✓ ${added.length} event${added.length!==1?'s':''} stored → <code>${data.vendor_id}:events</code>${skipped.length ? ` · ${skipped.length} skipped` : ''}</div>
+    <table class="events-table">
+      <thead><tr>
+        <th>Date</th><th>Type</th><th>Value</th><th>Summary</th><th>Sev</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+// ── baseline lookup ───────────────────────────────────────────────────────────
+async function loadBaseline() {
+  const vid = document.getElementById('baselineVendorId').value.trim().toLowerCase();
+  if (!vid) return toast('Enter a vendor ID', 'error');
+
+  const container = document.getElementById('baselineResult');
+  container.innerHTML = '<div style="color:var(--muted)">Loading…</div>';
+
+  try {
+    const r = await fetch(`${API}/baseline/${vid}`);
+    const data = await r.json();
+    if (!r.ok) {
+      container.innerHTML = `<div class="result-box result-error">${data.detail}</div>`;
+    } else {
+      const b = data.baseline;
+      container.innerHTML = `
+        <div style="color:var(--green);margin-bottom:12px;font-size:12px;">◈ <code>${vid}:baseline</code></div>
+        <div class="baseline-grid">
+          ${Object.entries(b).map(([k,v]) => `
+            <div class="baseline-field">
+              <div class="baseline-field-label">${k.replace(/_/g,' ')}</div>
+              <div class="baseline-field-value">${v || '<span style="color:var(--muted)">—</span>'}</div>
+            </div>`).join('')}
+        </div>`;
+      addVendorChip(vid);
+    }
+  } catch (err) {
+    container.innerHTML = `<div class="result-box result-error">Network error: ${err.message}</div>`;
+  }
+}
+
+// ── events lookup ─────────────────────────────────────────────────────────────
+async function loadEvents() {
+  const vid = document.getElementById('eventsVendorId').value.trim().toLowerCase();
+  if (!vid) return toast('Enter a vendor ID', 'error');
+
+  const container = document.getElementById('eventsResult');
+  container.innerHTML = '<div style="color:var(--muted)">Loading…</div>';
+
+  try {
+    const r = await fetch(`${API}/events/${vid}`);
+    const data = await r.json();
+    if (!r.ok) {
+      container.innerHTML = `<div class="result-box result-error">${data.detail}</div>`;
+      return;
+    }
+
+    const events = data.events || [];
+    if (!events.length) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-icon">∅</div>No events found for this vendor.</div>';
+      return;
+    }
+
+    const rows = events.map(e => {
+      const sev = e.severity;
+      return `
+      <tr>
+        <td>${e.date || '—'}</td>
+        <td><span class="fact-badge">${e.fact_type}</span></td>
+        <td style="max-width:180px;word-break:break-word">${e.value}</td>
+        <td>${e.summary}</td>
+        <td><span class="sev sev-${sev}">${['','MINOR','NOTABLE','BREACH'][sev]||sev}</span></td>
+        <td style="color:var(--muted)">${e.source_doc}</td>
+      </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+      <div style="color:var(--muted);font-size:11px;margin-bottom:12px;">${events.length} event${events.length!==1?'s':''} · <code>${vid}:events</code></div>
+      <div style="overflow-x:auto;">
+      <table class="events-table">
+        <thead><tr>
+          <th>Date</th><th>Type</th><th>Value</th><th>Summary</th><th>Sev</th><th>Source</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      </div>`;
+    addVendorChip(vid);
+  } catch (err) {
+    container.innerHTML = `<div class="result-box result-error">Network error: ${err.message}</div>`;
+  }
+}
+
+// ── chat ──────────────────────────────────────────────────────────────────────
+function setQuery(q) {
+  document.getElementById('chatQuery').value = q;
+}
+
+async function askAgent() {
+  const vid   = document.getElementById('chatVendorId').value.trim().toLowerCase();
+  const query = document.getElementById('chatQuery').value.trim();
+  if (!vid)   return toast('Enter a vendor ID', 'error');
+  if (!query) return toast('Enter a question', 'error');
+
+  const messages = document.getElementById('chatMessages');
+  // clear empty state
+  messages.querySelectorAll('.msg-empty').forEach(el => el.remove());
+
+  const userMsg = document.createElement('div');
+  userMsg.className = 'msg msg-user';
+  userMsg.textContent = query;
+  messages.appendChild(userMsg);
+  messages.scrollTop = messages.scrollHeight;
+
+  const thinkingMsg = document.createElement('div');
+  thinkingMsg.className = 'msg msg-agent';
+  thinkingMsg.style.color = 'var(--muted)';
+  thinkingMsg.textContent = '…thinking';
+  messages.appendChild(thinkingMsg);
+
+  const btn = document.getElementById('chatBtn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  document.getElementById('chatQuery').value = '';
+
+  try {
+    const r = await fetch(`${API}/reflect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vendor_id: vid, query })
+    });
+    const data = await r.json();
+    thinkingMsg.style.color = '';
+    thinkingMsg.textContent = r.ok ? (data.answer || '(no answer)') : `Error: ${data.detail}`;
+    if (!r.ok) thinkingMsg.style.color = 'var(--red)';
+  } catch (err) {
+    thinkingMsg.style.color = 'var(--red)';
+    thinkingMsg.textContent = `Network error: ${err.message}`;
+  }
+
+  messages.scrollTop = messages.scrollHeight;
+  btn.classList.remove('loading');
+  btn.disabled = false;
+}
+
+// enter to send
+document.getElementById('chatQuery').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askAgent(); }
+});
+
+// ── vendor chips ──────────────────────────────────────────────────────────────
+function addVendorChip(vid) {
+  if (knownVendors.has(vid)) return;
+  knownVendors.add(vid);
+  const list = document.getElementById('vendorList');
+  if (list.querySelector('div[style]')) list.innerHTML = '';
+  const chip = document.createElement('div');
+  chip.className = 'vendor-chip';
+  chip.innerHTML = `<div class="vendor-dot"></div>${vid}`;
+  chip.onclick = () => {
+    document.querySelectorAll('.vendor-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    document.getElementById('vendorId').value = vid;
+    document.getElementById('baselineVendorId').value = vid;
+    document.getElementById('eventsVendorId').value = vid;
+    document.getElementById('chatVendorId').value = vid;
+  };
+  list.appendChild(chip);
+}
+
+// ── toast ─────────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = '', 3000);
+}
+</script>
+</body>
+</html>
