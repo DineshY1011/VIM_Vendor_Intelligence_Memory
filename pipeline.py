@@ -2,14 +2,14 @@
 pipeline.py — VendorPulse Document Ingestion Pipeline
 
 Handles:
-  1. Document text extraction (.txt, .pdf)
+  1. Document text extraction (.txt, .pdf, .docx, .csv, .eml)
   2. LLM fact extraction via Groq
   3. Drift classification against baseline
   4. Writing to Hindsight via memory.py
 
 Two upload modes:
-  - "baseline"  : Process as the original contract. Writes {vendor_id}:baseline.
-  - "normal"    : Process as a post-contract document. Appends to {vendor_id}:events.
+  - "baseline" : Extracts the six contract fields → write_baseline()
+  - "normal"   : Extracts structured facts + drift score → append_event()
 """
 
 import json
@@ -95,7 +95,7 @@ def _call_groq(system: str, user_msg: str) -> str:
             model=MODEL,
             messages=[
                 {"role": "system", "content": system},
-                {"role": "user", "content": user_msg}
+                {"role": "user",   "content": user_msg},
             ],
             temperature=0.1,
             max_tokens=2000,
@@ -104,10 +104,11 @@ def _call_groq(system: str, user_msg: str) -> str:
     except Exception as e:
         return f"ERROR: {e}"
 
+
 def _parse_json(text: str) -> Optional[dict]:
     text = re.sub(r"```json\s*", "", text)
     text = re.sub(r"```\s*", "", text)
-    # strip <think>...</think> blocks (qwen3 chain-of-thought)
+    # strip <think>…</think> blocks produced by qwen3 chain-of-thought
     text = re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
     match = re.search(r"\{[\s\S]*\}", text)
     if match:
@@ -117,6 +118,7 @@ def _parse_json(text: str) -> Optional[dict]:
             pass
     return None
 
+
 def extract_text(file_bytes: bytes, filename: str) -> str:
     """Extract plain text from uploaded file bytes."""
     fname = filename.lower()
@@ -124,29 +126,29 @@ def extract_text(file_bytes: bytes, filename: str) -> str:
         try:
             import pdfplumber, io
             with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-                return "\n".join(
-                    page.extract_text() or "" for page in pdf.pages
-                )
+                return "\n".join(page.extract_text() or "" for page in pdf.pages)
         except ImportError:
-            return file_bytes.decode("utf-8", errors="ignore")
+            pass  # fall through to UTF-8 decode
     return file_bytes.decode("utf-8", errors="ignore")
 
-# ── baseline mode ─────────────────────────────────────────────────────────────
+
+# ── extraction helpers ────────────────────────────────────────────────────────
 def extract_baseline(text: str, filename: str) -> Optional[dict]:
-    """Use Groq to extract baseline fields from a contract document."""
+    """Use Groq to extract the six baseline fields from a contract document."""
     prompt = f"Contract document ({filename}):\n\n{text[:4000]}"
     raw = _call_groq(BASELINE_EXTRACTOR_SYSTEM, prompt)
     return _parse_json(raw)
 
-# ── normal / event mode ───────────────────────────────────────────────────────
+
 def extract_events(text: str, filename: str) -> Optional[dict]:
     """Use Groq to extract structured facts from any post-contract document."""
     prompt = f"Document ({filename}):\n\n{text[:4000]}"
     raw = _call_groq(EVENT_EXTRACTOR_SYSTEM, prompt)
     return _parse_json(raw)
 
+
 def classify_drift(baseline: dict, fact: dict) -> Optional[dict]:
-    """Compare a new fact against the vendor baseline and classify drift."""
+    """Compare a new fact against the vendor baseline and return drift severity."""
     prompt = (
         f"Baseline contract terms:\n{json.dumps(baseline, indent=2)}\n\n"
         f"New fact from recent document:\n"
@@ -157,46 +159,56 @@ def classify_drift(baseline: dict, fact: dict) -> Optional[dict]:
     raw = _call_groq(DRIFT_CLASSIFIER_SYSTEM, prompt)
     return _parse_json(raw)
 
+
 # ── deduplication ─────────────────────────────────────────────────────────────
 def is_duplicate(event: dict, existing_events: list) -> bool:
     """
-    Check duplicate per §3.5: compare fact_type + value + date.
-    Discard if all three match an existing event.
+    Per §3.5: discard if fact_type + value + date all match an existing event.
     """
     for e in existing_events:
         if (
             e.get("fact_type") == event.get("fact_type") and
-            e.get("value") == event.get("value") and
-            e.get("date") == event.get("date")
+            e.get("value")     == event.get("value")     and
+            e.get("date")      == event.get("date")
         ):
             return True
     return False
 
-# ── main pipeline entry points ────────────────────────────────────────────────
+
+# ── pipeline entry points ─────────────────────────────────────────────────────
 async def process_baseline_doc(
     vendor_id: str,
     file_bytes: bytes,
     filename: str,
+    doc_id: str = None,
 ) -> dict:
     """
     Process a document in BASELINE mode.
-    Extracts the six baseline fields and writes {vendor_id}:baseline to Hindsight.
-    Returns: {"ok": bool, "baseline": dict, "error": str}
+
+    Extracts the six baseline fields via Groq and writes {vendor_id}:baseline
+    to Hindsight using the provided doc_id as the Hindsight document identifier.
+
+    Returns:
+        {"ok": bool, "baseline": dict | None, "error": str | None}
     """
     from memory import write_baseline
 
-    text = extract_text(file_bytes, filename)
+    text     = extract_text(file_bytes, filename)
     baseline = extract_baseline(text, filename)
 
     if not baseline:
-        return {"ok": False, "baseline": None, "error": "Could not extract baseline fields from document."}
+        return {
+            "ok":       False,
+            "baseline": None,
+            "error":    "Could not extract baseline fields from document.",
+        }
 
-    # Ensure all six fields present
+    # Ensure all six fields are present (missing → empty string per §2.3)
     for field in ["vendor_name", "agreed_price", "sla_terms",
                   "contract_start", "renewal_date", "rep_name"]:
         baseline.setdefault(field, "")
 
-    stored = await write_baseline(vendor_id, baseline)
+    stored = await write_baseline(vendor_id, baseline, doc_id=doc_id)
     return {"ok": True, "baseline": stored, "error": None}
 
 
@@ -204,30 +216,47 @@ async def process_normal_doc(
     vendor_id: str,
     file_bytes: bytes,
     filename: str,
+    doc_id: str = None,
     existing_baseline: Optional[dict] = None,
-    existing_events: Optional[list] = None,
+    existing_events:   Optional[list] = None,
 ) -> dict:
     """
     Process a document in NORMAL (event) mode.
-    Extracts facts, runs drift classification, appends to {vendor_id}:events.
-    Returns: {"ok": bool, "events_added": list, "events_skipped": list, "error": str}
+
+    Extracts structured facts via Groq, runs drift classification against the
+    baseline, deduplicates, and appends each new fact to {vendor_id}:events
+    using the provided doc_id as the Hindsight document identifier.
+
+    Returns:
+        {
+          "ok": bool,
+          "doc_date": str,
+          "events_added": list,
+          "events_skipped": list,
+          "error": str | None,
+        }
     """
     from memory import append_event
 
     if existing_events is None:
         existing_events = []
 
-    text = extract_text(file_bytes, filename)
+    text       = extract_text(file_bytes, filename)
     extraction = extract_events(text, filename)
 
     if not extraction or not extraction.get("facts"):
-        return {"ok": False, "events_added": [], "events_skipped": [],
-                "error": "No facts extracted from document."}
+        return {
+            "ok":             False,
+            "doc_date":       None,
+            "events_added":   [],
+            "events_skipped": [],
+            "error":          "No facts extracted from document.",
+        }
 
     doc_date = extraction.get("doc_date") or ""
-    facts = extraction.get("facts", [])
+    facts    = extraction.get("facts", [])
 
-    events_added = []
+    events_added   = []
     events_skipped = []
 
     for fact in facts:
@@ -236,7 +265,7 @@ async def process_normal_doc(
             events_skipped.append({"fact": fact, "reason": "confidence < 0.7"})
             continue
 
-        # Map old fact_type names to new spec if needed
+        # Normalise fact_type to the five valid values
         ft = fact.get("fact_type", "incident")
         ft_map = {
             "price":       "price_change",
@@ -244,7 +273,7 @@ async def process_normal_doc(
             "term_change": "term_change",
             "commitment":  "commitment",
             "incident":    "incident",
-            "baseline":    None,  # skip — belongs in baseline mode
+            "baseline":    None,   # skip — belongs in baseline mode only
         }
         mapped = ft_map.get(ft, ft)
         if mapped is None:
@@ -252,15 +281,15 @@ async def process_normal_doc(
             continue
         fact["fact_type"] = mapped
 
-        # Run drift classification if we have a baseline
-        severity = 1
+        # Drift classification — requires an existing baseline
+        severity     = 1
         drift_result = None
         if existing_baseline:
             drift_result = classify_drift(existing_baseline, fact)
             if drift_result:
                 severity = int(drift_result.get("severity", 1))
 
-        # Build event object per §3.1 schema
+        # Build the event object per §3.1 schema
         event = {
             "date":       doc_date,
             "fact_type":  fact["fact_type"],
@@ -270,24 +299,20 @@ async def process_normal_doc(
             "source_doc": filename,
         }
 
-        # Duplicate check (§3.5)
+        # Duplicate check per §3.5
         if is_duplicate(event, existing_events):
             events_skipped.append({"event": event, "reason": "duplicate"})
             continue
 
-        # Append to Hindsight
-        stored = await append_event(vendor_id, event)
+        # Write to Hindsight
+        stored = await append_event(vendor_id, event, doc_id=doc_id)
         existing_events.append(stored)
-
-        events_added.append({
-            "event": stored,
-            "drift": drift_result,
-        })
+        events_added.append({"event": stored, "drift": drift_result})
 
     return {
-        "ok": True,
-        "doc_date": doc_date,
-        "events_added": events_added,
+        "ok":             True,
+        "doc_date":       doc_date,
+        "events_added":   events_added,
         "events_skipped": events_skipped,
-        "error": None,
+        "error":          None,
     }
