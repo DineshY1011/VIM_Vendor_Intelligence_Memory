@@ -1,271 +1,269 @@
-# VendorPulse — Vendor Intelligence Agent
+# VIM — Vendor Intelligence Management
 
-> Drop in documents about a vendor. Ask a question. Get an answer that proves the agent remembers history and detected something you didn't know.
+![VIM Banner](https://github.com/mohesh-coder/VIM/blob/c06819898c3222b791bd74f788a47cb82207f90b/asset/banner.png)
 
----
+> **Procurement intelligence that treats every vendor document as structured memory.**
 
-## What It Does
-
-VendorPulse is a procurement intelligence agent that ingests vendor documents (contracts, invoices, incident reports, renewal letters, call transcripts), extracts structured facts, stores them as persistent memory, and answers natural language questions with full historical context.
-
-It automatically detects **contract drift** — when a vendor quietly changes pricing, removes SLA clauses, or makes verbal commitments they haven't honoured.
+VIM catches what contracts forget: silent price hikes, watered-down SLAs at renewal, credits that were promised and never arrived. It ingests raw vendor documents — contracts, invoices, call transcripts, incident reports, renewal drafts — extracts structured facts, scores them against the original baseline, and gives you a queryable timeline of every deviation across every vendor relationship.
 
 ---
 
-## Stack
+## The Problem It Solves
 
-| Component | Tool | Notes |
-|---|---|---|
-| LLM | [Groq](https://groq.com) | `qwen/qwen3-32b`, free tier |
-| Agent Memory | [Hindsight Cloud](https://hindsight.cloud) | Promo code: `MEMHACK409` ($50 credits) |
-| PDF Parsing | `pdfplumber` | Handles contracts and invoices |
-| Backend | Python | Pipeline + agent logic |
-| UI | Streamlit | Three-screen demo interface |
+Vendor contracts get signed, then forgotten. By the time a renewal comes around, the procurement team has no clear record of what was originally agreed versus what actually happened. VIM fixes this by maintaining a living memory of each vendor relationship from day one.
+
+The Twilio sample dataset illustrates the pattern the system is built to catch: a silent SMS rate hike discovered via invoice ($0.0075 → $0.0081, no notice given), a four-hour outage with an unpaid $1,182 SLA credit, and a renewal document that quietly removes the 99.95% uptime guarantee and replaces it with "commercially reasonable efforts."
+
+---
+
+## Features
+
+**Document Pipeline (`pipeline.py`)** — Two upload modes:
+
+- `baseline` mode extracts the six frozen contract fields: vendor name, agreed price, SLA terms, contract start date, renewal date, and rep name. These become the benchmark everything else is compared against.
+- `normal` mode processes any post-contract document — invoice, email thread, call transcript, incident report — extracts structured facts, classifies each one by type (`price_change`, `sla_violation`, `term_change`, `commitment`, `incident`), scores drift severity (1–3) against the baseline, deduplicates, and appends to the vendor's event log.
+
+**Intelligent Agent (`agent.py`)** — Ask free-form questions against accumulated vendor memory:
+
+- "What is the difference between what we agreed and what we're paying?"
+- "Has Twilio met its SLA obligations over the past 12 months?"
+- "Generate a negotiation brief for the upcoming Twilio renewal."
+- Live drift alerts filtered by severity across all vendors.
+
+**Hindsight Memory Layer (`memory.py`)** — All facts are stored in [Hindsight](https://ui.hindsight.vectorize.io/), a key-value memory service designed for LLM applications. One record per vendor baseline (`{vendor_id}:baseline`), one record per event (`{vendor_id}:events`). The storage and reasoning layers are deliberately separate: Hindsight holds facts, Groq interprets them.
+
+**FastAPI Server (`server.py`)** — Unified REST API with two web UIs: a Pipeline UI for document ingestion and an Agent UI for querying, drift alerts, and negotiation briefs.
+
+---
+
+## Architecture and Data Flow
+
+```
+Raw documents (PDF, TXT, DOCX, EML)
+          │
+          ▼
+    POST /upload
+    (vendor_id + mode)
+          │
+          ▼
+    pipeline.py
+    ┌─────────────────────────────────────────────────┐
+    │  extract_text()          → plain text            │
+    │  extract_baseline()      → 6-field JSON (Groq)  │
+    │  extract_events()        → facts list (Groq)    │
+    │  classify_drift()        → severity 1-3 (Groq)  │
+    │  is_duplicate()          → deduplication check  │
+    └─────────────────────────────────────────────────┘
+          │
+          ▼
+    memory.py  →  Hindsight KV store
+    ┌────────────────────────────────────────────────────┐
+    │  write_baseline()   →  {vendor_id}:baseline        │
+    │  append_event()     →  {vendor_id}:events          │
+    │  get_baseline()     ←  read frozen contract terms  │
+    │  get_events()       ←  read full event timeline    │
+    └────────────────────────────────────────────────────┘
+          │
+          ▼
+    agent.py  →  Groq (Qwen 32B)
+    ┌────────────────────────────────────────────────────┐
+    │  ask_vendorpulse()        → free-form Q&A          │
+    │  get_negotiation_brief()  → structured brief       │
+    │  build_context_block()    → baseline + events      │
+    └────────────────────────────────────────────────────┘
+```
+
+**LLM:** Groq (`qwen/qwen3-32b`) — used for baseline extraction, event extraction, drift classification, and agent reasoning. All calls use the same model with purpose-specific system prompts.
+
+**Memory:** Hindsight — two keys per vendor. The `{vendor_id}:baseline` key stores the frozen contract terms. The `{vendor_id}:events` key holds the append-only event log. A vendor registry key tracks all registered vendor IDs.
 
 ---
 
 ## Project Structure
 
 ```
-vendorpulse/
-├── data/
-│   └── synthetic/
-│       ├── contract_2022.txt
-│       ├── invoice_2023_01.txt  →  invoice_2024_06.txt
-│       ├── incident_jun2023.txt
-│       ├── renewal_feb2024.txt
-│       └── call_may2024.txt
-├── pipeline/
-│   ├── extractor.py        # extract_facts() — LLM-powered fact extraction
-│   ├── memory_writer.py    # write_baseline(), write_event()
-│   └── drift_detector.py  # check_drift() — compares events to baseline
-├── agent/
-│   ├── recall.py           # ask_vendorpulse() — retrieves + reasons over memory
-│   └── brief.py            # Structured negotiation brief generator
-├── app.py                  # Streamlit UI
-└── README.md
+vim/
+├── server.py          # FastAPI app — all HTTP endpoints
+├── pipeline.py        # Document ingestion and fact extraction
+├── agent.py           # LLM reasoning layer (Q&A, briefs, alerts)
+├── memory.py          # Hindsight read/write abstraction
+├── requirements.txt   # Python dependencies
+├── .env               # API keys (not committed)
+└── static/
+    ├── agent_ui.html      # Chat + drift alerts UI
+    └── pipeline_ui.html   # Document upload UI
+```
+
+Sample vendor documents (Twilio):
+
+```
+docs/
+├── contract_2022.txt      # Original MSA — baseline source
+├── invoice_2023_01.txt    # First invoice showing undisclosed rate change
+├── incident_jun2023.txt   # SLA outage email thread + unpaid credit
+├── renewal_feb2024.txt    # Renewal draft with removed SLA protections
+└── call_may2024.txt       # Vendor review call transcript
 ```
 
 ---
 
-## Setup
+## Installation and Setup
 
-### 1. Install dependencies
+### Prerequisites
+
+- Python 3.10+
+- A [Groq](https://console.groq.com) API key
+- A [Hindsight](https://ui.hindsight.vectorize.io/) API key and bank ID
+
+### 1. Clone and create a virtual environment
 
 ```bash
-pip install groq pdfplumber streamlit requests
+git clone https://github.com/mohesh-coder/VIM.git
+cd vim
+
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 ```
 
-### 2. Set environment variables
+### 2. Install dependencies
 
 ```bash
-export GROQ_API_KEY=your_groq_key
-export HINDSIGHT_API_KEY=your_hindsight_key   # use promo: MEMHACK409
+pip install -r requirements.txt
 ```
 
-### 3. Generate synthetic data
-
-Create the following files in `data/synthetic/`. Make them feel real — use real dollar amounts, plausible names, and accurate dates.
-
-| File | Contents |
-|---|---|
-| `contract_2022.txt` | Original Twilio contract. Price: $0.0075/SMS, SLA: 99.95% uptime, signed March 2022 |
-| `invoice_2023_01.txt` | First invoice with a quiet 8% price increase (no notice given) |
-| `invoice_2023_02.txt` → `invoice_2024_06.txt` | Monthly invoices at the new rate |
-| `incident_jun2023.txt` | Email thread about a 4-hour outage — no SLA credit issued |
-| `renewal_feb2024.txt` | Renewal doc with the uptime SLA clause silently removed |
-| `call_may2024.txt` | Sales call transcript — rep (Jordan Mills) promises rate lock through Q2 |
-
----
-
-## Core Components
-
-### Fact Extractor (`pipeline/extractor.py`)
-
-```python
-def extract_facts(text: str, date: str, doc_type: str) -> list[dict]:
-    """
-    Calls Groq to extract structured facts from a document excerpt.
-    Returns a list of facts with type, value, date, confidence, and summary.
-    Discards any fact with confidence < 0.7.
-    """
-```
-
-Groq prompt instructs the model to return JSON only with this schema:
-
-```json
-{
-  "facts": [
-    {
-      "fact_type": "price | sla | commitment | incident | term_change",
-      "value": "the specific value or statement",
-      "date": "YYYY-MM-DD",
-      "confidence": 0.95,
-      "summary": "One-sentence description"
-    }
-  ]
-}
-```
-
-### Memory Writer (`pipeline/memory_writer.py`)
-
-```python
-def write_baseline(vendor_id: str, facts: list[dict]) -> None:
-    """
-    Called once, on the original contract only.
-    Stores agreed price, SLA terms, renewal date, and rep name.
-    This memory is never overwritten.
-    """
-
-def write_event(vendor_id: str, fact: dict) -> None:
-    """
-    Called for every subsequent fact found in later documents.
-    Appends a timestamped event to the vendor's event log in Hindsight.
-    """
-```
-
-### Drift Detector (`pipeline/drift_detector.py`)
-
-```python
-def check_drift(vendor_id: str, new_fact: dict) -> dict:
-    """
-    Recalls baseline from Hindsight, compares with new_fact,
-    and returns a drift report with severity 1–3.
-    Severity 3 = material breach (triggers console/UI alert).
-    """
-```
-
-Drift report schema:
-
-```json
-{
-  "is_drift": true,
-  "severity": 3,
-  "delta_summary": "Price increased 8% with no notice, from $0.0075 to $0.0081/SMS",
-  "action": "Request retroactive credit and demand written justification"
-}
-```
-
-### Agent (`agent/recall.py`)
-
-```python
-def ask_vendorpulse(vendor_id: str, question: str) -> str:
-    """
-    1. Recalls all memories for vendor from Hindsight (baseline + events)
-    2. Formats them into a structured context block
-    3. Passes context + question to Groq
-    4. Returns a specific, date-cited, drift-aware answer
-    """
-```
-
-Context block format fed to the LLM:
+`requirements.txt` includes:
 
 ```
-VENDOR: Twilio
-BASELINE (signed March 2022):
-- Price: $0.0075 per SMS
-- SLA: 99.95% uptime guaranteed
-- Renewal: June 2024
-
-EVENT LOG:
-- Jan 2023: Price raised to $0.0081/SMS (8% increase, no notice) [DRIFT - severity 3]
-- Jun 2023: 4-hour outage, no SLA credit issued [DRIFT - severity 2]
-- Feb 2024: Uptime SLA removed from renewal document [DRIFT - severity 3]
-- May 2024: Rep (Jordan Mills) verbally promised rate lock through Q2 [commitment - unverified]
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+groq>=0.9.0
+hindsight-client>=0.3.0
+python-dotenv>=1.0.0
+pdfplumber>=0.11.0
 ```
 
----
+### 3. Configure environment variables
 
-## Running the Pipeline
+Create a `.env` file in the project root:
+
+```env
+# Required
+GROQ_API_KEY=gsk_...
+HINDSIGHT_API_KEY=hsk_...
+
+# Optional — Hindsight defaults
+HINDSIGHT_URL=https://api.hindsight.so
+BANK_NAME=vendorpulse
+```
+
+`BANK_NAME` is the Hindsight bank (namespace) that VIM will read and write to. Use a unique bank name per environment (e.g. `vendorpulse-prod`, `vendorpulse-dev`).
+
+### 4. Place the UI files
 
 ```bash
-# Ingest all synthetic documents in chronological order
-python pipeline/run_pipeline.py --vendor twilio --data-dir data/synthetic/
-
-# Verify what was stored in Hindsight
-python pipeline/verify_memory.py --vendor twilio
+mkdir static
+cp agent_ui.html static/
+cp pipeline_ui.html static/
 ```
 
-After a successful run you should see:
-- **1 baseline memory** for Twilio (original contract terms)
-- **~8 event memories** covering the price change, outage, SLA removal, and rate lock promise
-
----
-
-## Running the App
+### 5. Start the server
 
 ```bash
-streamlit run app.py
+uvicorn server:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Screen 1 — Vendor Overview
-Vendor name, baseline terms, and a timeline of drift events colour-coded by severity (🔴 3 · 🟡 2 · ⚪ 1).
+The server will print:
 
-### Screen 2 — Chat Interface
-Natural language Q&A against the full vendor memory. Demo questions to try:
-
-- *"Brief me on Twilio before my renewal call"*
-- *"What has Twilio promised that they haven't delivered?"*
-- *"How much has our price changed since we signed?"*
-
-### Screen 3 — Drift Alerts
-All severity 2 and 3 events sorted by date — the *"what you didn't know you were losing"* view.
-
----
-
-## Memory Schema (shared contract between pipeline and agent)
-
-Both teammates must code to this and not change it without telling each other.
-
-```python
-VENDOR_ID = "twilio"   # always lowercase
-
-BASELINE_KEYS = {
-    "price_per_sms": float,        # e.g. 0.0075
-    "sla_uptime_pct": float,       # e.g. 99.95
-    "renewal_date": str,            # "YYYY-MM-DD"
-    "signed_date": str,             # "YYYY-MM-DD"
-    "rep_name": str,                # "Jordan Mills"
-}
-
-EVENT_SCHEMA = {
-    "fact_type": str,               # "price | sla | commitment | incident | term_change"
-    "value": str,                   # the specific value or statement
-    "date": str,                    # "YYYY-MM-DD"
-    "summary": str,                 # one sentence
-    "drift_severity": int | None,   # 1, 2, 3, or None if no drift
-}
+```
+VIM running at → http://localhost:8000
 ```
 
----
-
-## Demo Flow (60 seconds)
-
-Rehearse this until it runs without fumbling:
-
-1. Open the app. Show the empty state — *"No history loaded."*
-2. Click **Ingest Twilio history**. Watch the pipeline run. Events populate the timeline.
-3. Go to **Drift Alerts**. Show the three red alerts.
-4. Go to **Chat**. Type *"Brief me on Twilio before my renewal call."* Read the output aloud as it streams.
-5. Type *"What has Twilio promised that they haven't delivered?"* Show the rate lock answer.
+Open `http://localhost:8000` for the Agent UI and `http://localhost:8000/pipeline` for the document upload UI.
 
 ---
 
-## Team Split
+## Hindsight Integration
 
-| | Person 1 — Pipeline | Person 2 — Agent |
+VIM uses [Hindsight](https://ui.hindsight.vectorize.io/) via `hindsight-client` as its memory layer. Hindsight is a key-value store designed for persistent LLM memory — it provides `store()` (write/overwrite) and `append()` (add to a list) operations.
+
+`memory.py` wraps Hindsight with four functions:
+
+| Function | Hindsight operation | Key pattern |
 |---|---|---|
-| **Day 1 AM** | Generate synthetic data | Set up Hindsight + Groq, test recall with dummy memories |
-| **Day 1 PM** | Build and test `extract_facts()` | Build `ask_vendorpulse()`, test with dummy memories |
-| **Day 1 Eve** | Write baseline + events to Hindsight | Build negotiation brief output, integrate with real memories |
-| **Day 2 AM** | Build drift detection, test all alerts | Build Streamlit screens 1 and 2 |
-| **Day 2 PM** | End-to-end pipeline test, fix extraction misses | Build screen 3, wire everything together |
-| **Day 2 Eve** | 🤝 Rehearse demo together, fix anything that breaks the flow ||
+| `write_baseline(vendor_id, data)` | `hindsight.store(key, data)` | `{vendor_id}:baseline` |
+| `append_event(vendor_id, event)` | `hindsight.append(key, event)` | `{vendor_id}:events` |
+| `get_baseline(vendor_id)` | `hindsight.recall(key)` | `{vendor_id}:baseline` |
+| `get_events(vendor_id)` | `hindsight.recall(key)` | `{vendor_id}:events` |
+
+If `HINDSIGHT_API_KEY` is not set, `memory.py` falls back to an in-memory dict for local development and testing. The agent and pipeline work identically in both modes.
 
 ---
 
-## Goal
+## API Endpoints
 
-One vendor. One perfect demo flow. A clear story.
+### Document ingestion
 
-That beats a half-built multi-vendor dashboard every time.
+```
+POST /upload
+  Form: vendor_id (string), mode ("baseline" | "normal"), files (multipart)
+
+POST /api/ingest
+  Body: { "doc_type": "baseline" | "event", "vendor_id": string, "data": {} }
+```
+
+### Vendor data
+
+```
+GET  /api/vendors                        → list all registered vendor IDs
+GET  /api/overview?vendor_id=twilio      → baseline + full event log
+GET  /api/overview                       → all vendors
+GET  /api/alerts?vendor_id=twilio        → severity >= 2 events
+GET  /api/alerts?min_severity=3          → only material breaches, all vendors
+```
+
+### Agent
+
+```
+POST /api/chat
+  Body: { "vendor_id": "twilio", "question": "What SLA credits are outstanding?" }
+  vendor_id is optional — omit to query across all vendors
+
+POST /api/brief?vendor_id=twilio         → negotiation brief
+```
+
+### Diagnostics
+
+```
+GET  /health                             → server + Hindsight status
+GET  /api/verify                         → Hindsight connection + vendor inventory
+GET  /api/debug/vendor/{vendor_id}       → full raw data as the agent sees it
+```
+
+---
+
+## Environment Variables Reference
+
+| Variable | Required | Description |
+|---|---|---|
+| `GROQ_API_KEY` | Yes | Groq API key — used for all LLM calls |
+| `HINDSIGHT_API_KEY` | Yes | Hindsight API key — memory read/write |
+| `HINDSIGHT_URL` | No | Hindsight base URL (defaults to `https://api.hindsight.so`) |
+| `BANK_NAME` | No | Hindsight bank/namespace (defaults to `VIM`) |
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome. When adding new document types or fact categories, update the system prompts in `pipeline.py` and the relevant enum values in `memory.py`.
+
+## Contributors
+
+| Contributor | Role | Responsibilities |
+|---|---|---|
+| [mohesh-coder](https://github.com/mohesh-coder) | Pipeline Builder | Document ingestion, fact extraction, Hindsight memory, drift detection |
+| [DineshY1011](https://github.com/DineshY1011) | Agent Builder | Recall & reasoning layer, negotiation briefs, Streamlit UI |
+
+---
+
+*Built with Groq · Hindsight · FastAPI · Qwen-32B*
