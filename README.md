@@ -262,7 +262,7 @@ Issues and pull requests are welcome. When adding new document types or fact cat
 | Contributor | Role | Responsibilities |
 |---|---|---|
 | [mohesh-coder](https://github.com/mohesh-coder) | Pipeline Builder | Document ingestion, fact extraction, Hindsight memory, drift detection |
-| [DineshY1011](https://github.com/DineshY1011) | Agent Builder | Recall & reasoning layer, negotiation briefs, Streamlit UI |
+| [DineshY1011](https://github.com/DineshY1011) | Agent Builder | Recall & reasoning layer, negotiation briefs, User Interface |
 
 ---
 
