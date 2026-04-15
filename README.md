@@ -265,7 +265,7 @@ Issues and pull requests are welcome. When adding new document types or fact cat
 | [DineshY1011](https://github.com/DineshY1011) | Agent Builder | Recall & reasoning layer, negotiation briefs, User Interface |
 
 ---
-## 🔗 Demo & Live App
+## Demo & Live App
 
 | | Link |
 |---|---|
