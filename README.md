@@ -271,5 +271,6 @@ Issues and pull requests are welcome. When adding new document types or fact cat
 |---|---|
 | **Demo Video** | [Watch on Google Drive](https://drive.google.com/file/d/15UbN-T__bL05UjdJ5lQH5-c2DPfRn6IW/view?usp=sharing) |
 | **Live App** | [Open Hosted App](https://vendor-intelligence-management.onrender.com/) |
+| **Article** | [Read Article](https://medium.com/@y.dinesh1256/how-i-used-hindsight-to-bridge-the-procurement-data-gap-7c7cba3f113e) |
 
 *Built with Groq · Hindsight · FastAPI · Qwen-32B*
