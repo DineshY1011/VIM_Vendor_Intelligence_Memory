@@ -265,5 +265,11 @@ Issues and pull requests are welcome. When adding new document types or fact cat
 | [DineshY1011](https://github.com/DineshY1011) | Agent Builder | Recall & reasoning layer, negotiation briefs, User Interface |
 
 ---
+## 🔗 Demo & Live App
+
+| | Link |
+|---|---|
+| **Demo Video** | [Watch on Google Drive](https://drive.google.com/file/d/15UbN-T__bL05UjdJ5lQH5-c2DPfRn6IW/view?usp=sharing) |
+| **Live App** | [Open Hosted App](https://vendor-intelligence-management.onrender.com/) |
 
 *Built with Groq · Hindsight · FastAPI · Qwen-32B*
